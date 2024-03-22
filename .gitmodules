@@ -1,0 +1,6 @@
+[submodule "jaxpi"]
+	path = jaxpi
+	url = git@github.com:PredictiveIntelligenceLab/jaxpi.git
+[submodule "PINNs"]
+	path = PINNs
+	url = git@github.com:maziarraissi/PINNs.git
