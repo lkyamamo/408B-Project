@@ -14,4 +14,4 @@ x = data['x'].flatten()
 t = data['t'].flatten()
 usol = data['usol']
 
-model.AllenCahnPINN(t,x,usol)
+model.ConventionalAllenCahnPINN(t,x,usol)
