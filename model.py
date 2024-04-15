@@ -56,7 +56,7 @@ class ConventionalAllenCahnPINN():
         u_xx = x_tape.gradient(u_x, self.x_train)
 
         # residue loss
-        loss_r = tf.keras.losses.MSE()
+        loss_r = tf.math.square(tf.math.reduce_mean(u_t - 0.0001*u_xx + 5*u*u*u -5*u))
 
         # initial condition loss
         loss_ic = tf.keras.losses.MSE(self.usol_initial, self.model(np.stack([self.t_initial, self.x_initial])))
@@ -85,5 +85,5 @@ class ConventionalAllenCahnPINN():
                     loss_val = self.loss_function(u, t_tape, x_tape)
 
                 grads = loss_tape.gradient(loss_val, self.model)
-                
+
                 self.model.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
