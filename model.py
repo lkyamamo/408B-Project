@@ -73,7 +73,8 @@ class ConventionalAllenCahnPINN():
         self.model.build((None,2))
 
         # logs
-        self.losses = {'total_loss':[], 'boundary_loss':[], 'residual_loss':[], 'initial_loss':[]}
+        self.log = {'total_loss':[], 'boundary_loss':[], 'residual_loss':[], 'initial_loss':[], 
+                    'ic_loss_grad':[], 'bc_loss_grad':[], 'r_loss_grad':[]}
 
 
     def loss_function(self):
@@ -116,12 +117,30 @@ class ConventionalAllenCahnPINN():
 
         total_loss = self.lambda_r*loss_r + self.lambda_ic*loss_ic + self.lambda_bc*loss_bc
 
-        self.losses['total_loss'].append(total_loss.numpy().item())
-        self.losses['residual_loss'].append(loss_r.numpy().item())
-        self.losses['initial_loss'].append(loss_ic.numpy().item())
-        self.losses['boundary_loss'].append(loss_bc.numpy().item())
+        self.log['total_loss'].append(total_loss.numpy().item())
+        self.log['residual_loss'].append(loss_r.numpy().item())
+        self.log['initial_loss'].append(loss_ic.numpy().item())
+        self.log['boundary_loss'].append(loss_bc.numpy().item())
 
         return total_loss, loss_r, loss_ic, loss_bc
+    
+    def residual_loss(self, t, x):
+        with tf.GradientTape(persistent=True) as x_tape, tf.GradientTape(persistent=True) as t_tape:
+            t_tape.reset()
+            x_tape.reset()
+            t_tape.watch(t)
+            x_tape.watch(x)
+
+            u = self.model(tf.stack([t, x], axis=1))
+
+        u_t = tf.expand_dims(t_tape.gradient(u, t, unconnected_gradients=tf.UnconnectedGradients.ZERO), axis=-1)
+        u_x = tf.expand_dims(x_tape.gradient(u, x, unconnected_gradients=tf.UnconnectedGradients.ZERO), axis=-1)
+        u_xx = tf.expand_dims(x_tape.gradient(u_x, x, unconnected_gradients=tf.UnconnectedGradients.ZERO), axis=-1)
+        
+        loss_r = tf.math.square(tf.math.reduce_mean(u_t - 0.0001 * u_xx + 5 * tf.math.pow(u_xx,[3]) - 5*u))
+
+        return(loss_r)
+        
 
     def train(self, max_epochs):
         optimizer = tf.keras.optimizers.Adam()
@@ -138,14 +157,19 @@ class ConventionalAllenCahnPINN():
             print("Updating Weights")
 
             # global weights
-            if(epoch + 1 % self.f == 0):
+            if((epoch + 1) % self.f == 0):
+                print("Updateing Global Weights")
                 ic_grad = loss_tape.gradient(loss_ic, self.model.trainable_variables, unconnected_gradients=tf.UnconnectedGradients.ZERO)
                 bc_grad = loss_tape.gradient(loss_bc, self.model.trainable_variables, unconnected_gradients=tf.UnconnectedGradients.ZERO)
                 r_grad = loss_tape.gradient(loss_r, self.model.trainable_variables, unconnected_gradients=tf.UnconnectedGradients.ZERO)
-
+                
                 ic_grad_norm = self.compute_L2_norm(ic_grad)
                 bc_grad_norm = self.compute_L2_norm(bc_grad)
                 r_grad_norm = self.compute_L2_norm(r_grad)
+
+                self.log['ic_loss_grad'].append(ic_grad_norm)
+                self.log['bc_loss_grad'].append(bc_grad_norm)
+                self.log['r_loss_grad'].append(r_grad_norm)
 
                 self.lambda_ic = self.alpha*self.lambda_ic + (1-self.alpha)*(ic_grad_norm + bc_grad_norm + r_grad_norm)/ic_grad_norm
                 self.lambda_bc = self.alpha*self.lambda_bc + (1-self.alpha)*(ic_grad_norm + bc_grad_norm + r_grad_norm)/bc_grad_norm
@@ -161,7 +185,7 @@ class ConventionalAllenCahnPINN():
         
         return tf.reshape(output,(201,512))
     
-    def compute_L2_norm(tensor_list):
+    def compute_L2_norm(self, tensor_list):
         output = 0
         for tensor in tensor_list: 
             output += tf.math.sqrt(tf.math.reduce_sum(tf.math.square(tensor)))

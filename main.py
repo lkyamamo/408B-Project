@@ -13,6 +13,8 @@ x = data['x'].flatten()
 t = data['t'].flatten()
 usol = data['usol']
 
-pinn = model.ConventionalAllenCahnPINN(t,x,usol)
+pinn = model.ConventionalAllenCahnPINN(t,x,usol, f=5)
 
-pinn.train(5)
+pinn.train(10)
+
+print(pinn.log['ic_loss_grad'])
