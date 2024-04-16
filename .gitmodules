@@ -4,3 +4,6 @@
 [submodule "PINNs"]
 	path = PINNs
 	url = git@github.com:maziarraissi/PINNs.git
+[submodule "PINN"]
+	path = PINN
+	url = git@github.com:DikovAlexandr/PINN.git
