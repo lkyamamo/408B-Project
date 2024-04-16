@@ -1,6 +1,5 @@
 import scipy.io
 import os
-import tensorflow as tf
 import model
 
 working_dir = os.getcwd()
@@ -14,4 +13,6 @@ x = data['x'].flatten()
 t = data['t'].flatten()
 usol = data['usol']
 
-model.ConventionalAllenCahnPINN(t,x,usol)
+pinn = model.ConventionalAllenCahnPINN(t,x,usol)
+
+pinn.train(5)

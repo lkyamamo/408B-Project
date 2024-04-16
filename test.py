@@ -1,10 +1,8 @@
 import numpy as np
 
-def change_first(list):
-    list[0] = 10
+t_train = np.load('t_train.npy')
+x_train = np.load('x_train.npy')
 
-my_list = [0,1,2,3,4]
+inputs = np.stack([t_train,x_train],axis=1)
 
-change_first(my_list)
-
-print(my_list)
+print(inputs[511::512])
