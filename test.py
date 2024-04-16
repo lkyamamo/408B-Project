@@ -5,4 +5,9 @@ x_train = np.load('x_train.npy')
 
 inputs = np.stack([t_train,x_train],axis=1)
 
-print(inputs[511::512])
+print(inputs)
+
+inputs = np.random.permutation(inputs)
+
+
+print(inputs)
