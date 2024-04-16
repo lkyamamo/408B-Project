@@ -49,59 +49,70 @@ class ConventionalAllenCahnPINN():
         # initialize model
         self.model = tf.keras.models.Sequential([
             tf.keras.layers.Dense(2, dtype=tf.float32),
-            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32),
-            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32),
-            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32),
-            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32),
+            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32, kernel_initializer='glorot_uniform'),
+            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32, kernel_initializer='glorot_uniform'),
+            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32, kernel_initializer='glorot_uniform'),
+            tf.keras.layers.Dense(200, activation='tanh', dtype=tf.float32, kernel_initializer='glorot_uniform'),
             tf.keras.layers.Dense(1, name='output', dtype=tf.float32),
         ])
+
+        # logs
+        self.losses = {'total_loss':[], 'boundary_loss':[], 'residual_loss':[], 'initial_loss':[]}
 
 
     def loss_function(self, u, t_tape, x_tape):
         print("Calculating Loss Value")
-        u_t = tf.expand_dims(t_tape.gradient(u, self.t_train), axis = -1)
-        u_x = tf.expand_dims(x_tape.gradient(u, self.x_train), axis=-1)
-        u_xx = tf.expand_dims(x_tape.gradient(u_x, self.x_train), axis=-1)
+        u_t = tf.expand_dims(t_tape.gradient(u, self.t_train, unconnected_gradients=tf.UnconnectedGradients.ZERO), axis=-1)
+        u_x = tf.expand_dims(x_tape.gradient(u, self.x_train, unconnected_gradients=tf.UnconnectedGradients.ZERO), axis=-1)
+        u_xx = tf.expand_dims(x_tape.gradient(u_x, self.x_train, unconnected_gradients=tf.UnconnectedGradients.ZERO), axis=-1)
 
-        print(f"u_t: {u_t.shape}")
-        print(f"u_x: {u_x.shape}")
-        print(f"u_xx: {u_xx.shape}")
-
-        # residue loss 
+        # residual loss 
         loss_r = tf.math.square(tf.math.reduce_mean(u_t - 0.0001 * u_xx + 5 * tf.math.pow(u_xx,[3]) - 5*u))
 
         # initial condition loss
-        loss_ic = tf.keras.losses.MSE(self.usol_initial, self.model(np.stack([self.t_initial, self.x_initial]).T))
+        loss_ic = tf.math.square(tf.math.reduce_mean((self.usol_initial - u[:512])))
 
         # boundary condition loss
         loss_bc = tf.math.square(tf.math.reduce_mean((u[0::512] - u[511:512]))) + tf.math.square(tf.math.reduce_mean((u_x[0::512] - u_x[511::512])))
 
-        return loss_r + loss_ic + loss_bc
+        total_loss = loss_r + loss_ic + loss_bc
+
+        self.losses['total_loss'].append(total_loss.numpy().item())
+        self.losses['residual_loss'].append(loss_r.numpy().item())
+        self.losses['initial_loss'].append(loss_ic.numpy().item())
+        self.losses['boundary_loss'].append(loss_bc.numpy().item())
+
+        return total_loss
 
     def train(self, max_epochs):
         optimizer = tf.keras.optimizers.Adam()
 
         for epoch in range(max_epochs):
             print(f"Epoch {epoch + 1}")
-            with tf.GradientTape(persistent=True) as x_tape, tf.GradientTape(persistent=True) as t_tape:
-                x_tape.reset()
-                t_tape.reset()
+            with tf.GradientTape(persistent=True) as loss_tape:
+                loss_tape.reset()
+                with tf.GradientTape(persistent=True) as x_tape, tf.GradientTape(persistent=True) as t_tape:
+                    x_tape.reset()
+                    t_tape.reset()
 
-                t_tape.watch(self.t_train)
-                x_tape.watch(self.x_train)
+                    t_tape.watch(self.t_train)
+                    x_tape.watch(self.x_train)
 
-                inputs = tf.stack([self.t_train,self.x_train],axis=1)
+                    inputs = tf.stack([self.t_train,self.x_train],axis=1)
+                
+                
+                    u = self.model(inputs)
 
-                print(f"inputs: {inputs.shape}")
+                loss_val = self.loss_function(u, t_tape, x_tape)
 
-                u = self.model(inputs)
+            print("Updating Weights")
 
-                with tf.GradientTape() as loss_tape:
+            grads = loss_tape.gradient(loss_val, self.model.trainable_variables, unconnected_gradients=tf.UnconnectedGradients.ZERO)
 
-                    loss_val = self.loss_function(u, t_tape, x_tape)
+            optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
 
-                print("Updating Weights")
-
-                grads = loss_tape.gradient(loss_val, self.model.trainable_variables)
-
-                optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+    def evaluate(self):
+        inputs = tf.stack([self.t_train,self.x_train],axis=1)
+        output = self.model(inputs)
+        
+        return tf.reshape(output,(201,512))
